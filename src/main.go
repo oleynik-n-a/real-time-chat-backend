@@ -35,6 +35,7 @@ func main() {
 	router.POST("/login", LoginHandler)
 	router.POST("/refresh-token", RefreshTokenHandler)
 	router.POST("/send-message", SendMessageHandler)
+	router.POST("/recent-messages", GetRecentMessagesHandler)
 
 	// Start server
 	if err := router.Run(":8080"); err != nil {

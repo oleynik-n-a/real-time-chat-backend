@@ -14,6 +14,7 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
 var tinodeURL string = os.Getenv("TINODE_API_URL")
@@ -291,4 +292,30 @@ func SendMessageHandler(c *gin.Context) {
 		"message":    "Message sent successfully",
 		"message_id": msg.ID,
 	})
+}
+
+func GetRecentMessagesHandler(c *gin.Context) {
+	generalCollection := client.Database("chatdb").Collection("General")
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	var messages []Message
+	cursor, err := generalCollection.Find(ctx, bson.M{}, options.Find().SetSort(bson.M{"created_at": -1}).SetLimit(50))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch messages"})
+		return
+	}
+	defer cursor.Close(ctx)
+
+	if err = cursor.All(ctx, &messages); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to parse messages"})
+		return
+	}
+
+	var messageTexts []string
+	for _, msg := range messages {
+		messageTexts = append(messageTexts, msg.Text)
+	}
+
+	c.JSON(http.StatusOK, messageTexts)
 }
