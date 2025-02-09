@@ -1,17 +1,19 @@
 package main
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"time"
 
-	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
 )
 
 type User struct {
-	ID        uuid.UUID "bson:\"_id\" json:\"id\""
-	Email     string    "bson:\"email\" json:\"email\""
-	Password  string    "bson:\"password\" json:\"-\""
-	CreatedAt time.Time "bson:\"created_at\" json:\"created_at\""
+	ID            string    "bson:\"_id\" json:\"id\""
+	Email         string    "bson:\"email\" json:\"email\""
+	Password      string    "bson:\"password\" json:\"-\""
+	CreatedAt     time.Time "bson:\"created_at\" json:\"created_at\""
+	TokenIssuedAt time.Time "bson:\"token_issued_at\" json:\"token_issued_at\""
 }
 
 type AuthRequest struct {
@@ -34,7 +36,7 @@ func (u *User) CheckPassword(password string) error {
 
 func NewUser(email, password string) (*User, error) {
 	user := &User{
-		ID:        uuid.New(),
+		ID:        generateID(),
 		Email:     email,
 		Password:  password,
 		CreatedAt: time.Now(),
@@ -43,4 +45,10 @@ func NewUser(email, password string) (*User, error) {
 		return nil, err
 	}
 	return user, nil
+}
+
+func generateID() string {
+	bytes := make([]byte, 16)
+	rand.Read(bytes)
+	return hex.EncodeToString(bytes)
 }
