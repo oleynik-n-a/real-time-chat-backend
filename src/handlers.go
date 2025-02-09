@@ -14,6 +14,7 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
 var tinodeURL string = os.Getenv("TINODE_API_URL")
@@ -140,7 +141,7 @@ func LoginHandler(c *gin.Context) {
 			"scheme": "basic",
 			"secret": encodeBasicAuth(user.Email, req.Password),
 		}
-	
+
 		resp, err := sendTinodeRequest("login", tinodeData)
 		if err != nil || resp.StatusCode != http.StatusOK {
 			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "Failed to login user in Tinode"})
@@ -248,9 +249,73 @@ func RefreshTokenHandler(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"message": "Token refreshed successfully",
-		"token":   newTokenString,
-		"user_id": user.ID,
+		"message":          "Token refreshed successfully",
+		"token":            newTokenString,
+		"user_id":          user.ID,
 		"token_expires_at": time.Now().Add(24 * time.Hour).Unix(),
 	})
+}
+
+func SendMessageHandler(c *gin.Context) {
+	var msg Message
+	if err := c.ShouldBindJSON(&msg); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
+		return
+	}
+
+	msg.ID = generateID()
+	msg.CreatedAt = time.Now()
+
+	generalCollection := client.Database("chatdb").Collection("General")
+	_, err := generalCollection.InsertOne(context.Background(), msg)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save message"})
+		return
+	}
+
+	tinodeData := map[string]interface{}{
+		"topic": "General",
+		"content": map[string]interface{}{
+			"text": msg.Text,
+			"from": msg.UserID,
+		},
+	}
+
+	resp, err := sendTinodeRequest("pub", tinodeData)
+	if err != nil || resp.StatusCode != http.StatusOK {
+		log.Println("Tinode message send failed")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to send message to Tinode"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message":    "Message sent successfully",
+		"message_id": msg.ID,
+	})
+}
+
+func GetRecentMessagesHandler(c *gin.Context) {
+	generalCollection := client.Database("chatdb").Collection("General")
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	var messages []Message
+	cursor, err := generalCollection.Find(ctx, bson.M{}, options.Find().SetSort(bson.M{"created_at": -1}).SetLimit(50))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch messages"})
+		return
+	}
+	defer cursor.Close(ctx)
+
+	if err = cursor.All(ctx, &messages); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to parse messages"})
+		return
+	}
+
+	var messageTexts []string
+	for _, msg := range messages {
+		messageTexts = append(messageTexts, msg.Text)
+	}
+
+	c.JSON(http.StatusOK, messageTexts)
 }

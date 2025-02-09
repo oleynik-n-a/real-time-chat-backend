@@ -21,6 +21,13 @@ type AuthRequest struct {
 	Password string "json:\"password\" validate:\"required,min=8,max=16\""
 }
 
+type Message struct {
+	ID        string    "bson:\"_id\" json:\"id\""
+	UserID    string    "bson:\"user_id\" json:\"user_id\""
+	Text      string    "bson:\"text\" json:\"text\""
+	CreatedAt time.Time "bson:\"created_at\" json:\"created_at\""
+}
+
 func (u *User) HashPassword() error {
 	hashed, err := bcrypt.GenerateFromPassword([]byte(u.Password), bcrypt.DefaultCost)
 	if err != nil {
