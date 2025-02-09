@@ -46,7 +46,6 @@ func sendTinodeRequest(method string, params map[string]interface{}) (*http.Resp
 	return resp, nil
 }
 
-
 func encodeBasicAuth(login, password string) string {
 	authString := login + ":" + password
 	return base64.StdEncoding.EncodeToString([]byte(authString))
@@ -136,6 +135,17 @@ func LoginHandler(c *gin.Context) {
 			"token_expires_at":  tokenExpiryTime.Unix(),
 			"user_id":           user.ID,
 		})
+
+		tinodeData := map[string]interface{}{
+			"scheme": "basic",
+			"secret": encodeBasicAuth(user.Email, req.Password),
+		}
+	
+		resp, err := sendTinodeRequest("login", tinodeData)
+		if err != nil || resp.StatusCode != http.StatusOK {
+			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "Failed to login user in Tinode"})
+			return
+		}
 		return
 	}
 
@@ -151,22 +161,16 @@ func LoginHandler(c *gin.Context) {
 		return
 	}
 
-	update := bson.M{"$set": bson.M{"token_issued_at": time.Now()}}
-	_, err = collection.UpdateOne(context.Background(), bson.M{"_id": user.ID}, update)
-	if err != nil {
-		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "Failed to update token issue time"})
-		return
+	tinodeData := map[string]interface{}{
+		"scheme": "basic",
+		"secret": encodeBasicAuth(user.Email, req.Password),
 	}
 
-	// tinodeData := map[string]interface{}{
-	// 	"id":    user.ID,
-	// 	"token": tokenString,
-	// }
-	// _, err = sendTinodeRequest("login", "POST", tinodeData)
-	// if err != nil {
-	// 	c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "Failed to login user in Tinode"})
-	// 	return
-	// }
+	resp, err := sendTinodeRequest("login", tinodeData)
+	if err != nil || resp.StatusCode != http.StatusOK {
+		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "Failed to login user in Tinode"})
+		return
+	}
 
 	c.JSON(http.StatusOK, gin.H{
 		"message":          "Login successful, new token issued",
@@ -232,9 +236,21 @@ func RefreshTokenHandler(c *gin.Context) {
 		return
 	}
 
+	tinodeData := map[string]interface{}{
+		"scheme": "token",
+		"secret": newTokenString,
+	}
+
+	resp, err := sendTinodeRequest("hi", tinodeData)
+	if err != nil || resp.StatusCode != http.StatusOK {
+		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "Failed to refresh token in Tinode"})
+		return
+	}
+
 	c.JSON(http.StatusOK, gin.H{
+		"message": "Token refreshed successfully",
 		"token":   newTokenString,
 		"user_id": user.ID,
-		"message": "Token refreshed successfully",
+		"token_expires_at": time.Now().Add(24 * time.Hour).Unix(),
 	})
 }

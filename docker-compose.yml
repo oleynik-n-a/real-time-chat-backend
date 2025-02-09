@@ -70,8 +70,8 @@ services:
     environment:
       - TINODE_ENV=dev
       - LOG_LEVEL=debug
-      # - TINODE_AUTH_HANDLERS=external
-      # - TINODE_ALLOW_INSECURE_AUTH=true
+      - TINODE_AUTH_HANDLERS=external
+      - TINODE_ALLOW_INSECURE_AUTH=true
       - MYSQL_DSN="mysql://tinode:tinodepassword@tcp(mysql:3306)/tinode?parseTime=true&collation=utf8mb4_unicode_ci"
     depends_on:
       mysql:
