@@ -1,8 +1,13 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"encoding/base64"
+	"encoding/json"
+	"log"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -10,6 +15,42 @@ import (
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 )
+
+var tinodeURL string = os.Getenv("TINODE_API_URL")
+
+func sendTinodeRequest(method string, params map[string]interface{}) (*http.Response, error) {
+	requestData := map[string]interface{}{
+		"id":     1,
+		"method": method,
+		"params": params,
+	}
+
+	jsonData, err := json.Marshal(requestData)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", tinodeURL+"/v1", bytes.NewBuffer(jsonData))
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+
+	return resp, nil
+}
+
+
+func encodeBasicAuth(login, password string) string {
+	authString := login + ":" + password
+	return base64.StdEncoding.EncodeToString([]byte(authString))
+}
 
 func SignupHandler(c *gin.Context) {
 	var req AuthRequest
@@ -37,6 +78,24 @@ func SignupHandler(c *gin.Context) {
 	_, err = collection.InsertOne(context.Background(), user)
 	if err != nil {
 		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "Failed to create user"})
+		return
+	}
+
+	tinodeData := map[string]interface{}{
+		"scheme": "basic",
+		"secret": encodeBasicAuth(user.Email, req.Password),
+		"login":  true,
+		"desc": map[string]interface{}{
+			"public": map[string]string{
+				"fn": user.Email,
+			},
+		},
+	}
+
+	resp, err := sendTinodeRequest("acc", tinodeData)
+	if err != nil || resp.StatusCode != http.StatusOK {
+		log.Println("Tinode registration failed")
+		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "Failed to register user in Tinode"})
 		return
 	}
 
@@ -99,11 +158,21 @@ func LoginHandler(c *gin.Context) {
 		return
 	}
 
+	// tinodeData := map[string]interface{}{
+	// 	"id":    user.ID,
+	// 	"token": tokenString,
+	// }
+	// _, err = sendTinodeRequest("login", "POST", tinodeData)
+	// if err != nil {
+	// 	c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "Failed to login user in Tinode"})
+	// 	return
+	// }
+
 	c.JSON(http.StatusOK, gin.H{
 		"message":          "Login successful, new token issued",
 		"token":            tokenString,
-		"token_expires_at": time.Now().Add(24 * time.Hour).Unix(),
 		"user_id":          user.ID,
+		"token_expires_at": time.Now().Add(24 * time.Hour).Unix(),
 	})
 }
 

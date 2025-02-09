@@ -52,7 +52,7 @@ services:
       - "8080:8080"
     environment:
       MONGO_URL: mongodb://oleynik-n-a:oleynik-n-a-123@mongo:27017/chatdb?authSource=admin
-      TINODE_API_URL: http://tinode:16060
+      TINODE_API_URL: http://tinode:6060
     depends_on:
       mongo:
         condition: service_healthy
@@ -65,16 +65,19 @@ services:
     container_name: tinode
     restart: always
     ports:
-      - "16060:16060"
+      - "6060:6060"
       - "18080:18080"
     environment:
-      - TINODE_ENV=prod
-      - TINODE_AUTH_HANDLERS=external
-      - TINODE_ALLOW_INSECURE_AUTH=true
+      - TINODE_ENV=dev
+      - LOG_LEVEL=debug
+      # - TINODE_AUTH_HANDLERS=external
+      # - TINODE_ALLOW_INSECURE_AUTH=true
       - MYSQL_DSN="mysql://tinode:tinodepassword@tcp(mysql:3306)/tinode?parseTime=true&collation=utf8mb4_unicode_ci"
     depends_on:
       mysql:
         condition: service_healthy
+    # volumes:
+    #   - ./tinode.conf:/opt/tinode/tinode.conf
     networks:
       - tinode_net
       - app_net
