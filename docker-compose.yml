@@ -1,0 +1,92 @@
+services:
+  mongo:
+    image: arm64v8/mongo:latest
+    platform: linux/arm64
+    container_name: mongo
+    restart: always
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: oleynik-n-a
+      MONGO_INITDB_ROOT_PASSWORD: oleynik-n-a-123
+    volumes:
+      - mongo_data:/data/db
+    healthcheck:
+      test: echo 'db.runCommand("ping").ok' | mongosh mongo:27017/chatdb --quiet
+      interval: 10s
+      retries: 5
+      start_period: 30s
+    networks:
+      - backend_net
+      - app_net
+
+  mysql:
+    image: mysql:latest
+    container_name: mysql
+    restart: always
+    ports:
+      - "3306:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_DATABASE: tinode
+      MYSQL_USER: tinode
+      MYSQL_PASSWORD: tinodepassword
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-prootpassword"]
+      interval: 10s
+      retries: 10
+      start_period: 30s
+    networks:
+      - tinode_net
+      - app_net
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: backend
+    restart: always
+    ports:
+      - "8080:8080"
+    environment:
+      MONGO_URL: mongodb://oleynik-n-a:oleynik-n-a-123@mongo:27017/chatdb?authSource=admin
+      TINODE_API_URL: http://tinode:6060
+    depends_on:
+      mongo:
+        condition: service_healthy
+    networks:
+      - backend_net
+      - app_net
+
+  tinode:
+    image: tinode/tinode-mysql:latest
+    container_name: tinode
+    restart: always
+    ports:
+      - "6060:6060"
+      - "18080:18080"
+    environment:
+      - TINODE_ENV=dev
+      - LOG_LEVEL=debug
+      - TINODE_AUTH_HANDLERS=external
+      - TINODE_ALLOW_INSECURE_AUTH=true
+      - MYSQL_DSN="mysql://tinode:tinodepassword@tcp(mysql:3306)/tinode?parseTime=true&collation=utf8mb4_unicode_ci"
+    depends_on:
+      mysql:
+        condition: service_healthy
+    # volumes:
+    #   - ./tinode.conf:/opt/tinode/tinode.conf
+    networks:
+      - tinode_net
+      - app_net
+
+volumes:
+  mongo_data:
+  mysql_data:
+
+networks:
+  backend_net:
+  tinode_net:
+  app_net:
