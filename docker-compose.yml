@@ -1,4 +1,5 @@
 services:
+  # Основная база MongoDB (только для backend)
   mongo:
     image: arm64v8/mongo:latest
     platform: linux/arm64
@@ -6,13 +7,44 @@ services:
     restart: always
     ports:
       - "27017:27017"
-    volumes:
-      - mongo_data:/data/db
-      - ./init-mongo.js:/docker-entrypoint-initdb.d/init-mongo.js
     environment:
       MONGO_INITDB_ROOT_USERNAME: oleynik-n-a
       MONGO_INITDB_ROOT_PASSWORD: oleynik-n-a-123
+    volumes:
+      - mongo_data:/data/db
+    healthcheck:
+      test: echo 'db.runCommand("ping").ok' | mongosh mongo:27017/chatdb --quiet
+      interval: 10s
+      retries: 5
+      start_period: 30s
+    networks:
+      - backend_net
+      - app_net  # Даем доступ backend к MongoDB
 
+  # Пустая MySQL (только для Tinode)
+  mysql:
+    image: mysql:latest  # Заменяем MariaDB на MySQL
+    container_name: mysql
+    restart: always
+    ports:
+      - "3306:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_DATABASE: tinode  # Создаем пустую базу для Tinode
+      MYSQL_USER: tinode
+      MYSQL_PASSWORD: tinodepassword
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-prootpassword"]
+      interval: 10s
+      retries: 10
+      start_period: 30s
+    networks:
+      - tinode_net
+      - app_net  # Даем доступ tinode к backend
+
+  # Backend работает только с MongoDB
   backend:
     build:
       context: .
@@ -23,11 +55,17 @@ services:
       - "8080:8080"
     environment:
       MONGO_URL: mongodb://oleynik-n-a:oleynik-n-a-123@mongo:27017/chatdb?authSource=admin
+      TINODE_API_URL: http://tinode:16060  # Теперь backend знает адрес Tinode
     depends_on:
-      - mongo
+      mongo:
+        condition: service_healthy
+    networks:
+      - backend_net
+      - app_net  # Даем backend доступ к Tinode
 
+  # Tinode работает только с MySQL
   tinode:
-    image: tinode/tinode-mongodb:latest
+    image: tinode/tinode-mysql:latest  # Используем версию с MySQL
     container_name: tinode
     restart: always
     ports:
@@ -35,13 +73,21 @@ services:
       - "18080:18080"  # WebSocket
     environment:
       - TINODE_ENV=prod
-      - TINODE_MONGO_ENABLED=false
-      - TINODE_AUTH_HANDLERS=token
+      - TINODE_AUTH_HANDLERS=external
       - TINODE_ALLOW_INSECURE_AUTH=true
+      - MYSQL_DSN="mysql://tinode:tinodepassword@tcp(mysql:3306)/tinode?parseTime=true&collation=utf8mb4_unicode_ci"
     depends_on:
-      - backend
+      mysql:
+        condition: service_healthy
     networks:
-      - default
+      - tinode_net
+      - app_net  # Даем tinode доступ к backend
 
 volumes:
   mongo_data:
+  mysql_data:
+
+networks:
+  backend_net:  # Для MongoDB + Backend
+  tinode_net:   # Для MySQL + Tinode
+  app_net:      # Общая сеть для Backend + Tinode
