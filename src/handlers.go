@@ -140,7 +140,7 @@ func LoginHandler(c *gin.Context) {
 			"scheme": "basic",
 			"secret": encodeBasicAuth(user.Email, req.Password),
 		}
-	
+
 		resp, err := sendTinodeRequest("login", tinodeData)
 		if err != nil || resp.StatusCode != http.StatusOK {
 			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "Failed to login user in Tinode"})
@@ -248,9 +248,47 @@ func RefreshTokenHandler(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"message": "Token refreshed successfully",
-		"token":   newTokenString,
-		"user_id": user.ID,
+		"message":          "Token refreshed successfully",
+		"token":            newTokenString,
+		"user_id":          user.ID,
 		"token_expires_at": time.Now().Add(24 * time.Hour).Unix(),
+	})
+}
+
+func SendMessageHandler(c *gin.Context) {
+	var msg Message
+	if err := c.ShouldBindJSON(&msg); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
+		return
+	}
+
+	msg.ID = generateID()
+	msg.CreatedAt = time.Now()
+
+	generalCollection := client.Database("chatdb").Collection("General")
+	_, err := generalCollection.InsertOne(context.Background(), msg)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save message"})
+		return
+	}
+
+	tinodeData := map[string]interface{}{
+		"topic": "General",
+		"content": map[string]interface{}{
+			"text": msg.Text,
+			"from": msg.UserID,
+		},
+	}
+
+	resp, err := sendTinodeRequest("pub", tinodeData)
+	if err != nil || resp.StatusCode != http.StatusOK {
+		log.Println("Tinode message send failed")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to send message to Tinode"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message":    "Message sent successfully",
+		"message_id": msg.ID,
 	})
 }

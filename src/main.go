@@ -34,6 +34,7 @@ func main() {
 	router.POST("/signup", SignupHandler)
 	router.POST("/login", LoginHandler)
 	router.POST("/refresh-token", RefreshTokenHandler)
+	router.POST("/send-message", SendMessageHandler)
 
 	// Start server
 	if err := router.Run(":8080"); err != nil {
